@@ -28,12 +28,12 @@ fn write_code_to_file() -> eyre::Result<()> {
     let bytecode = compiled.runtime_bytecode.to_vec();
     let hex_code = hex::encode(bytecode);
     println!("Callee code: {}", hex_code);
-    std::fs::write(Path::new("./callee.hex"), hex_code)?;
+    std::fs::write(Path::new("./calee.hex"), hex_code)?;
 
 
     let bytecode = compiled.bytecode.to_vec();
     let hex_code = hex::encode(bytecode);
-    std::fs::write(Path::new("./callee_w_cons.hex"), hex_code)?;
+    std::fs::write(Path::new("./callee_cons.hex"), hex_code)?;
     Ok(())
 }
 
@@ -113,12 +113,14 @@ async fn run_sputnik() -> eyre::Result<()> {
 
     let mut data = id("setGreeting(bytes32)").to_vec();
     let mut message_set = 0x68656c6c6f_u64.to_be_bytes().to_vec();
-    let padded = vec![0; 24];
-    let mut msg_pad = vec![0; 27];
 
+    let mut msg_pad: Vec<u8> = vec![0;27];
     message_set.extend_from_slice(&msg_pad);
-    data.extend_from_slice(&padded);
-    data.extend_from_slice(&message_set);
+    let msg_slice = &message_set[3..];
+
+
+    data.extend_from_slice(msg_slice);
+
 
     println!("Data: {:?}", data);
 
@@ -131,6 +133,21 @@ async fn run_sputnik() -> eyre::Result<()> {
     let (reason, _) = executor.transact_call(from, to, value, data, gas_limit);
     assert!(matches!(reason, ExitReason::Succeed(_)));
 
+
+
+    // Now check expected
+
+    let mut data = id("getExpected()").to_vec();
+
+    let from = Address::zero();
+    let to = callee_address;
+    let value = 0.into();
+    let gas_limit = 10_000_000;
+    let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
+
+    println!("Call to get expected: {:?}", ret);
+
+    // Now retrieve the stored value for sanity
     let data = id("greeting()").to_vec();
     let from = Address::zero();
     let to = callee_address;
@@ -138,11 +155,11 @@ async fn run_sputnik() -> eyre::Result<()> {
     let gas_limit = 10_000_000;
     let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
 
-    let ret_val = hex::encode(ret);
-    println!("call to greeting() returned: {}", ret_val);
+    let ret_val = ret;
+    println!("call to greeting() returned: {:?}", ret_val);
 
 
-    // get all the test functions
+    // Run the test functions
     let test_fns = callee
         .abi
         .functions()

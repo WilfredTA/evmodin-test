@@ -11,4 +11,8 @@ contract Callee {
         require(greeting == bytes32("hello"), "greeting not hello");
     }
 
+    function getExpected() public returns (bytes32) {
+        return bytes32("hello");
+    }
+
 }
