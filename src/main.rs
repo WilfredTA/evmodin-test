@@ -28,12 +28,22 @@ fn write_code_to_file() -> eyre::Result<()> {
     let bytecode = compiled.runtime_bytecode.to_vec();
     let hex_code = hex::encode(bytecode);
     println!("Callee code: {}", hex_code);
-    std::fs::write(Path::new("./calee.hex"), hex_code)?;
+    std::fs::write(Path::new("./callee.hex"), hex_code)?;
 
 
     let bytecode = compiled.bytecode.to_vec();
     let hex_code = hex::encode(bytecode);
     std::fs::write(Path::new("./callee_cons.hex"), hex_code)?;
+
+    let compiled_clr = Solc::new("./CallerTest.sol").build()?;
+    let compiled = compiled_clr.get("Caller").expect("could not find contract");
+    let bytecode = compiled.runtime_bytecode.to_vec();
+    let hex_code = hex::encode(bytecode);
+    std::fs::write(Path::new("./caller.hex"), hex_code)?;
+
+    let bytecode = compiled.bytecode.to_vec();
+    let hex_code = hex::encode(bytecode);
+    std::fs::write(Path::new("./caller_cons.hex"), hex_code)?;
     Ok(())
 }
 
@@ -64,7 +74,7 @@ async fn run_sputnik() -> eyre::Result<()> {
     // Deploy Callee
     let callee_bytecode = callee.runtime_bytecode.clone().to_vec();
 
-    let callee_address: Address = "0x1000000000000000000000000000000000000000"
+    let callee_address: Address = "0x38db92b540acf663d72611e8c7c3cf219c7962e0"
         .parse()
         .unwrap();
 
@@ -83,7 +93,7 @@ async fn run_sputnik() -> eyre::Result<()> {
 
     let caller_bytecode = caller.runtime_bytecode.clone().to_vec();
 
-    let caller_address: Address = "0x2000000000000000000000000000000000000000"
+    let caller_address: Address = "0xb685955fb84725e230587ebdb1d8461d2e09783d"
         .parse()
         .unwrap();
 
@@ -112,60 +122,61 @@ async fn run_sputnik() -> eyre::Result<()> {
 
     // Make call to setGreeting()
 
-    // let mut data = id("setGreeting(bytes32)").to_vec();
-    // let mut message_set = 0x68656c6c6f_u64.to_be_bytes().to_vec();
-    //
-    // let mut msg_pad: Vec<u8> = vec![0;27];
-    // message_set.extend_from_slice(&msg_pad);
-    // let msg_slice = &message_set[3..];
-    //
-    //
-    // data.extend_from_slice(msg_slice);
-    //
-    //
-    // println!("Data: {:?} and data len: {:?}", data, data.len());
-    //
-    // // first make a call to setGreeting
-    // // call the setup function
-    // let from = Address::zero();
-    // let to = callee_address;
-    // let value = 0.into();
-    // let gas_limit = 10_000_000;
-    // let (reason, _) = executor.transact_call(from, to, value, data, gas_limit);
-    // assert!(matches!(reason, ExitReason::Succeed(_)));
-    //
-    //
-    //
-    // // Now check expected
-    //
-    // let mut data = id("getExpected()").to_vec();
-    //
-    // let from = Address::zero();
-    // let to = callee_address;
-    // let value = 0.into();
-    // let gas_limit = 10_000_000;
-    // let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
-    // assert!(matches!(reason, ExitReason::Succeed(_)));
-    // println!("Call to get expected: {:?}", ret);
-    //
-    // // Now retrieve the stored value for sanity
-    // let data = id("greeting()").to_vec();
-    // let from = Address::zero();
-    // let to = callee_address;
-    // let value = 0.into();
-    // let gas_limit = 10_000_000;
-    // let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
-    // assert!(matches!(reason, ExitReason::Succeed(_)));
-    // let ret_val = ret;
-    // println!("call to greeting() returned: {:?}", ret_val);
-    //
-    //
-    // // Set callee address on caller contract
+    let mut data = id("setGreeting(bytes32)").to_vec();
+    let mut message_set = 0x68656c6c6f_u64.to_be_bytes().to_vec();
+
+    let mut msg_pad: Vec<u8> = vec![0;27];
+    message_set.extend_from_slice(&msg_pad);
+    let msg_slice = &message_set[3..];
+
+
+    data.extend_from_slice(msg_slice);
+
+
+    println!("Data: {:?} and data len: {:?}", data, data.len());
+
+    // first make a call to setGreeting
+    // call the setup function
+    let from = Address::zero();
+    let to = callee_address;
+    let value = 0.into();
+    let gas_limit = 10_000_000;
+    let (reason, _) = executor.transact_call(from, to, value, data, gas_limit);
+    assert!(matches!(reason, ExitReason::Succeed(_)));
+
+
+
+    // Now check expected
+
+    let mut data = id("getExpected()").to_vec();
+
+    let from = Address::zero();
+    let to = callee_address;
+    let value = 0.into();
+    let gas_limit = 10_000_000;
+    let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
+    assert!(matches!(reason, ExitReason::Succeed(_)));
+    println!("Call to get expected: {:?}", ret);
+
+    // Now retrieve the stored value for sanity
+    let data = id("greeting()").to_vec();
+    let from = Address::zero();
+    let to = callee_address;
+    let value = 0.into();
+    let gas_limit = 10_000_000;
+    let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
+    assert!(matches!(reason, ExitReason::Succeed(_)));
+    let ret_val = ret;
+    println!("call to greeting() returned: {:?}", ret_val);
+
+
+    // Set callee address on caller contract
 
     let mut data = id("setCalleeTarget(address)").to_vec();
     let callee_addr_bytes = callee_address.to_fixed_bytes();
-    data.extend_from_slice(&callee_addr_bytes);
     data.extend_from_slice(&[0; 12]);
+    data.extend_from_slice(&callee_addr_bytes);
+
 
     println!("callee address bytes: {:?}", callee_addr_bytes);
     println!("datalen: {:?} \ndata: {:?}", data.len(), data);
@@ -175,8 +186,41 @@ async fn run_sputnik() -> eyre::Result<()> {
     let value = 0.into();
     let gas_limit = 15_000_000;
     let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
-    println!("Reason exit on set callee: {:?}", reason);
+    println!("Returned val from setCalleeTarget: {:?}", ret);
     assert!(matches!(reason, ExitReason::Succeed(_)));
+
+
+
+    // Call callee from caller
+
+    let mut data = id("callCalleeSetGreeting()").to_vec();
+
+    let from = Address::zero();
+    let to = caller_address;
+    let value = 0.into();
+    let gas_limit = 15_000_000;
+    let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
+    assert!(matches!(reason, ExitReason::Succeed(_)));
+
+
+    // Get callee greeting from caller
+    let mut data = id("callCalleeGreeting()").to_vec();
+    let expected_val = 0x68656c6c6f5f63616c6c6565_u128.to_be_bytes(); // "hello_callee" as hex
+    let mut expected = Vec::new();
+    expected.extend_from_slice(&expected_val[4..]);
+    expected.extend_from_slice(&vec![0; 20]);
+    let from = Address::zero();
+    let to = caller_address;
+    let value = 0.into();
+    let gas_limit = 15_000_000;
+    let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
+    println!("Returned val from callCalleeGreeting: {:?}", ret);
+    println!("Expected ret: {:?}\n ", expected);
+    assert!(matches!(reason, ExitReason::Succeed(_)));
+
+
+    let from = Address::zero();
+    let to = callee_address;
     // Run the test functions
     let test_fns = callee
         .abi

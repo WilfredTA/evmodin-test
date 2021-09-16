@@ -7,8 +7,9 @@ interface Callee {
 contract Caller {
     address public callee;
 
-    function setCalleeTarget(address _target) public {
-            callee = _target;
+    function setCalleeTarget(address _target) public returns (address) {
+        callee = _target;
+        return callee;
     }
 
     function callCalleeGreeting() public returns (bytes32) {

@@ -8,7 +8,7 @@ contract Callee {
     }
 
     function testGreeting() public {
-        require(greeting == bytes32("hello"), "greeting not hello");
+        require(greeting == bytes32("hello_callee"), "greeting not hello");
     }
 
     function getExpected() public returns (bytes32) {
