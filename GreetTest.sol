@@ -14,4 +14,5 @@ contract Greet {
     function testFailFoo() public {
         require(x == 2, "not two");
     }
+
 }

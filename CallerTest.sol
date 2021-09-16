@@ -11,13 +11,13 @@ contract Caller {
             callee = _target;
     }
 
-    function callCalleegreeting() public returns (bytes32) {
+    function callCalleeGreeting() public returns (bytes32) {
         Callee _callee = Callee(callee);
         bytes32 _greeting = _callee.greeting();
         return _greeting;
     }
 
-    function callCalleeSetgreeting() public {
+    function callCalleeSetGreeting() public {
         Callee _callee = Callee(callee);
         _callee.setGreeting(bytes32("hello_callee"));
     }
