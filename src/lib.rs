@@ -1,3 +1,5 @@
+pub mod odin_vm;
+
 #[cfg(test)]
 mod tests {
     #[test]

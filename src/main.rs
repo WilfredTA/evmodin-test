@@ -8,12 +8,42 @@ use evm::executor::{MemoryStackState, StackExecutor, StackSubstateMetadata};
 use evm::Config;
 use evm::{ExitReason, ExitRevert, ExitSucceed};
 use std::collections::BTreeMap;
-
+mod odin_vm;
+use odin_vm::run_odin;
+use hex::{self,encode};
+use std::path::Path;
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    // compile the contracts
-    let compiled = Solc::new("./*.sol").build()?;
-    let compiled = compiled.get("Greet").expect("could not find contract");
+    //write_code_to_file()
+    //run_odin().await
+
+    run_sputnik().await
+
+}
+
+
+fn write_code_to_file() -> eyre::Result<()> {
+    let compiled = Solc::new("./CalleeTest.sol").build()?;
+    let compiled = compiled.get("Callee").expect("could not find contract");
+    let bytecode = compiled.runtime_bytecode.to_vec();
+    let hex_code = hex::encode(bytecode);
+    println!("Callee code: {}", hex_code);
+    std::fs::write(Path::new("./callee.hex"), hex_code)?;
+
+
+    let bytecode = compiled.bytecode.to_vec();
+    let hex_code = hex::encode(bytecode);
+    std::fs::write(Path::new("./callee_w_cons.hex"), hex_code)?;
+    Ok(())
+}
+
+
+// Runs Callee.setGreeting -> Callee.testGreeting
+async fn run_sputnik() -> eyre::Result<()> {
+    let compiled = Solc::new("./CalleeTest.sol").build()?;
+    //let caller = compiled.get("Caller").expect("Could not find contract");
+    let callee = compiled.get("Callee").expect("Cound not find contract");
+    //let compiled = compiled.get("Greet").expect("could not find contract");
 
     let config = Config::istanbul();
 
@@ -30,20 +60,42 @@ async fn main() -> eyre::Result<()> {
     };
     let mut state = BTreeMap::new();
 
-    // Deploy the contract
-    let bytecode = compiled.runtime_bytecode.clone().to_vec();
-    let contract_address: Address = "0x1000000000000000000000000000000000000000"
+    // Deploy Callee
+    let callee_bytecode = callee.runtime_bytecode.clone().to_vec();
+
+    let callee_address: Address = "0x1000000000000000000000000000000000000000"
         .parse()
         .unwrap();
+
     state.insert(
-        contract_address,
+      callee_address,
         MemoryAccount {
             nonce: U256::one(),
             balance: U256::from(10000000),
             storage: BTreeMap::new(),
-            code: bytecode,
-        },
+            code: callee_bytecode,
+        }
     );
+
+
+    // Deploy Caller
+
+    // let caller_bytecode = caller.runtime_bytecode.clone().to_vec();
+    //
+    // let caller_address: Address = "0x2000000000000000000000000000000000000000"
+    //     .parse()
+    //     .unwrap();
+    //
+    // state.insert(
+    //     caller_address,
+    //     MemoryAccount {
+    //         nonce: U256::one(),
+    //         balance: U256::from(10000000),
+    //         storage: BTreeMap::new(),
+    //         code: caller_bytecode,
+    //     }
+    // );
+
 
     // setup memory backend w/ initial state
     let backend = MemoryBackend::new(&vicinity, state);
@@ -57,18 +109,41 @@ async fn main() -> eyre::Result<()> {
         StackExecutor::new(state, &config)
     };
 
-    // first make a call to `setUp()`, as done in DappTools
-    let data = id("setUp()").to_vec();
+    // Make call to setGreeting()
+
+    let mut data = id("setGreeting(bytes32)").to_vec();
+    let mut message_set = 0x68656c6c6f_u64.to_be_bytes().to_vec();
+    let padded = vec![0; 24];
+    let mut msg_pad = vec![0; 27];
+
+    message_set.extend_from_slice(&msg_pad);
+    data.extend_from_slice(&padded);
+    data.extend_from_slice(&message_set);
+
+    println!("Data: {:?}", data);
+
+    // first make a call to setGreeting
     // call the setup function
     let from = Address::zero();
-    let to = contract_address;
+    let to = callee_address;
     let value = 0.into();
     let gas_limit = 10_000_000;
     let (reason, _) = executor.transact_call(from, to, value, data, gas_limit);
     assert!(matches!(reason, ExitReason::Succeed(_)));
 
+    let data = id("greeting()").to_vec();
+    let from = Address::zero();
+    let to = callee_address;
+    let value = 0.into();
+    let gas_limit = 10_000_000;
+    let (reason, ret) = executor.transact_call(from, to, value, data, gas_limit);
+
+    let ret_val = hex::encode(ret);
+    println!("call to greeting() returned: {}", ret_val);
+
+
     // get all the test functions
-    let test_fns = compiled
+    let test_fns = callee
         .abi
         .functions()
         .into_iter()
@@ -91,12 +166,12 @@ async fn main() -> eyre::Result<()> {
         if matches!(result, ExitReason::Revert(_)) {
             let revert_reason =
                 abi::decode(&[abi::ParamType::String], &output[4..])?[0].to_string();
-            println!("{} failed. Revert reason: \"{}\"", func.name, revert_reason);
+            println!("{} failed. Revert reason: \"{}\"--- Expected: {:?}", func.name, revert_reason,expected);
         }
 
         // ensure it worked
         assert_eq!(result, expected);
-        println!("{}: {:?}", func.name, result);
+        println!("{}: {:?} -- Expected: {:?}", func.name, result, expected);
     }
 
     Ok(())

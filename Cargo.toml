@@ -7,10 +7,11 @@ edition = "2018"
 
 [dependencies]
 evm = "0.30.1"
-ethers = { git = "https://github.com/gakonst/ethers-rs", branch = "chore/update-ethabi" }
+ethers = { git = "https://github.com/gakonst/ethers-rs" }
 structopt = "0.3.22"
 tokio = { version = "1.10.1", features = ["macros"] }
 eyre = "0.6.5"
-
+evmodin = { path = "/home/tannr/EthRust/evmodin", features = ["evmc", "util"] }
+hex = "0.4.3"
 [patch.'crates-io']
 ethabi = { git = "https://github.com/gakonst/ethabi/", branch = "patch-1" }
