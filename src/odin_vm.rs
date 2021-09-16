@@ -10,9 +10,10 @@ use ethers::{
   utils::{id, Solc},
 };
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use evmodin::util::mocked_host::Account;
 use std::str::FromStr;
+use std::convert::{Into, From};
 
 pub async fn run_odin() -> eyre::Result<()> {
   if std::env::var("TRACE").is_ok() {
@@ -28,36 +29,136 @@ pub async fn test_odin_host() -> eyre::Result<()> {
 }
 
 fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
-  let compiled = Solc::new("./*.sol").build()?;
-  let compiled = compiled.get("Greet").expect("could not find contract");
-  let bytecode = compiled.runtime_bytecode.clone().to_vec();
+  let compiled_callee = Solc::new("./CalleeTest.sol").build()?;
+  let compiled_caller = Solc::new("./CallerTest.sol").build()?;
+
+  let callee_compiled = compiled_callee.get("Callee").expect("could not find contract");
+  let caller_compiled = compiled_caller.get("Caller").expect("could not find contract");
+  let callee = callee_compiled.runtime_bytecode.clone().to_vec();
+  let caller =caller_compiled.runtime_bytecode.clone().to_vec();
 
 
-  let contract = AnalyzedCode::analyze(bytecode);
+  let callee_acc = Account {
+    nonce: 0,
+    code: callee.clone().into(),
+    code_hash: H256::default(),
+    balance: U256::from(10000000),
+    storage: HashMap::new()
+
+  };
+  let caller_acc = Account {
+    nonce: 0,
+    code: caller.clone().into(),
+    code_hash: H256::default(),
+    balance: U256::from(10000000),
+    storage: HashMap::new()
+
+  };
+  let callee_address = "0x38db92b540acf663d72611e8c7c3cf219c7962e0".parse().unwrap();
+
+  let caller_address = "0xb685955fb84725e230587ebdb1d8461d2e09783d".parse().unwrap();
 
   let mut host = MockedHost::default();
+  host.accounts.insert(callee_address, callee_acc);
+  host.accounts.insert(caller_address, caller_acc);
 
-  let setup_id = id("setUp()").to_vec();
-  let gas = 10_000_000_000;
+  let callee_contract = AnalyzedCode::analyze(callee);
+
+  let caller_contract = AnalyzedCode::analyze(caller);
+
+  //Set Greeting in Callee
+  let mut data = id("setGreeting(bytes32)").to_vec();
+  let mut message_set = 0x68656c6c6f_u64.to_be_bytes().to_vec();
+
+  let mut msg_pad: Vec<u8> = vec![0;27];
+  message_set.extend_from_slice(&msg_pad);
+  let msg_slice = &message_set[3..];
+
+
+  data.extend_from_slice(msg_slice);
+
+
+
+   let gas = 10_000_000_000;
+  //
+  let msg = Message {
+    kind: CallKind::Call,
+    is_static: false,
+    depth: 1,
+    gas,
+    destination: callee_address,
+    sender: Address::zero(),
+    input_data: data.into(),
+    value: U256::zero(),
+  };
+
+
+  let output = callee_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
+  let str =  &host.accounts.entry(callee_address).or_default().storage;
+  println!("Callee (address: {}) has storage: {:?}",callee_address, str);
+  assert_eq!(output.status_code, StatusCode::Success);
+
+  let mut data = id("setCalleeTarget(address)").to_vec();
+  let callee_addr_bytes = callee_address.to_fixed_bytes();
+  data.extend_from_slice(&[0; 12]);
+  data.extend_from_slice(&callee_addr_bytes);
+
+
+  let sender = Address::zero();
+  let destination = caller_address;
+  let value = U256::zero();
+
 
   let msg = Message {
     kind: CallKind::Call,
     is_static: false,
     depth: 1,
     gas,
-    destination: Address::zero(),
-    sender: Address::zero(),
-    input_data: setup_id.into(),
-    value: U256::zero(),
+    destination,
+    sender,
+    input_data: data.into(),
+    value
   };
 
-
-  let output = contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
-  let str =  &host.accounts.entry(Address::zero()).or_default().storage;
-  println!("Storage is: {:?}", str);
+  let output = caller_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
+  let str =  &host.accounts.entry(caller_address).or_default().storage;
+  println!("Caller's (address: {}) storage is: {:?}",caller_address, str);
   assert_eq!(output.status_code, StatusCode::Success);
 
-  let test_fns = compiled
+  let mut data = id("callCalleeSetGreeting()").to_vec();
+
+  let msg = Message {
+    kind: CallKind::Call,
+    is_static: false,
+    depth: 1,
+    gas,
+    destination,
+    sender,
+    input_data: data.clone().into(),
+    value
+  };
+
+  let output = caller_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
+  let str =  &host.accounts.entry(callee_address).or_default().storage;
+  println!("Callee's (address: {}) storage is: {:?}",callee_address, str);
+  assert_eq!(output.status_code, StatusCode::Success);
+  //
+
+
+  let msg = Message {
+    kind: CallKind::Call,
+    is_static: false,
+    depth: 0,
+    gas,
+    destination: callee_address,
+    sender,
+    input_data: Default::default(),
+    value
+  };
+
+  let str =  &host.accounts.entry(callee_address).or_default().storage;
+  println!("Callee's (address: {}) storage is: {:?}",callee_address, str);
+  let test_fns = callee_compiled
       .abi
       .functions()
       .into_iter()
@@ -70,11 +171,12 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
       StatusCode::Success
     };
 
+
     let mut msg = msg.clone();
 
     msg.input_data = func.selector().to_vec().into();
 
-    let output = contract.execute(&mut host, &mut tracer, None, msg, Revision::latest());
+    let output = callee_contract.execute(&mut host, &mut tracer, None, msg, Revision::latest());
 
     if output.status_code == StatusCode::Revert {
       let revert_reason = abi::decode(&[abi::ParamType::String],
