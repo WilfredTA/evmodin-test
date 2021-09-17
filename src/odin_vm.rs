@@ -41,7 +41,7 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
   let callee_acc = Account {
     nonce: 0,
     code: callee.clone().into(),
-    code_hash: H256::default(),
+    code_hash: H256::random(),
     balance: U256::from(10000000),
     storage: HashMap::new()
 
@@ -65,7 +65,8 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
   let callee_contract = AnalyzedCode::analyze(callee);
 
   let caller_contract = AnalyzedCode::analyze(caller);
-
+  let gas = 10_000_000_000;
+  //
   //Set Greeting in Callee
   let mut data = id("setGreeting(bytes32)").to_vec();
   let mut message_set = 0x68656c6c6f_u64.to_be_bytes().to_vec();
@@ -79,7 +80,6 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
 
 
 
-   let gas = 10_000_000_000;
   //
   let msg = Message {
     kind: CallKind::Call,
@@ -95,7 +95,7 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
 
   let output = callee_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
   let str =  &host.accounts.entry(callee_address).or_default().storage;
-  println!("Callee (address: {}) has storage: {:?}",callee_address, str);
+  //println!("Callee (address: {}) has storage: {:?}",callee_address, str);
   assert_eq!(output.status_code, StatusCode::Success);
 
   let mut data = id("setCalleeTarget(address)").to_vec();
@@ -122,7 +122,7 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
 
   let output = caller_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
   let str =  &host.accounts.entry(caller_address).or_default().storage;
-  println!("Caller's (address: {}) storage is: {:?}",caller_address, str);
+  //println!("Caller's (address: {}) storage is: {:?}",caller_address, str);
   assert_eq!(output.status_code, StatusCode::Success);
 
   let mut data = id("callCalleeSetGreeting()").to_vec();
@@ -140,7 +140,8 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
 
   let output = caller_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
   let str =  &host.accounts.entry(callee_address).or_default().storage;
-  println!("Callee's (address: {}) storage is: {:?}",callee_address, str);
+  //println!("Callee's (address: {}) storage is: {:?}",callee_address, str);
+  //println!("Recorded Calls: {:?}", host.recorded);
   assert_eq!(output.status_code, StatusCode::Success);
   //
 
@@ -156,8 +157,10 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
     value
   };
 
+
+  // Tests
   let str =  &host.accounts.entry(callee_address).or_default().storage;
-  println!("Callee's (address: {}) storage is: {:?}",callee_address, str);
+  //println!("Callee's (address: {}) storage is: {:?}",callee_address, str);
   let test_fns = callee_compiled
       .abi
       .functions()
@@ -177,8 +180,10 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
     msg.input_data = func.selector().to_vec().into();
 
     let output = callee_contract.execute(&mut host, &mut tracer, None, msg, Revision::latest());
-
+    let target_storage =  &host.accounts.entry(callee_address).or_default().storage;
+    println!("Storage after calls: {:?}", target_storage);
     if output.status_code == StatusCode::Revert {
+
       let revert_reason = abi::decode(&[abi::ParamType::String],
       &output.output_data[4..])?[0].to_string();
       println!("{} failed. Revert reason: \"{}\"", func.name, revert_reason);

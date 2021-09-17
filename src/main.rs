@@ -15,9 +15,9 @@ use std::path::Path;
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     //write_code_to_file()
-    //run_odin().await
+    run_odin().await
 
-    run_sputnik().await
+    //run_sputnik().await
 
 }
 
