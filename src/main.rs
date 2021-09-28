@@ -9,41 +9,52 @@ use evm::Config;
 use evm::{ExitReason, ExitRevert, ExitSucceed};
 use std::collections::BTreeMap;
 mod odin_vm;
-use odin_vm::run_odin;
+use odin_vm::{run_odin, run_odin_deploy};
 use hex::{self,encode};
 use std::path::Path;
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     //write_code_to_file()
-    run_odin().await
-
+    //run_odin().await
+    run_odin_deploy().await
     //run_sputnik().await
 
 }
 
 
 fn write_code_to_file() -> eyre::Result<()> {
-    let compiled = Solc::new("./CalleeTest.sol").build()?;
-    let compiled = compiled.get("Callee").expect("could not find contract");
+    let compiled = Solc::new("./Basic.sol").build()?;
+    let compiled = compiled.get("BasicCreate").expect("could not find contract");
     let bytecode = compiled.runtime_bytecode.to_vec();
     let hex_code = hex::encode(bytecode);
-    println!("Callee code: {}", hex_code);
-    std::fs::write(Path::new("./callee.hex"), hex_code)?;
+    println!("BasicCreate code: {}", hex_code);
+    std::fs::write(Path::new("./basic_create.hex"), hex_code)?;
 
 
     let bytecode = compiled.bytecode.to_vec();
     let hex_code = hex::encode(bytecode);
-    std::fs::write(Path::new("./callee_cons.hex"), hex_code)?;
+    std::fs::write(Path::new("./basic_create_cons.hex"), hex_code)?;
 
-    let compiled_clr = Solc::new("./CallerTest.sol").build()?;
-    let compiled = compiled_clr.get("Caller").expect("could not find contract");
+    let compiled = Solc::new("./Basic.sol").build()?;
+    let compiled = compiled.get("Basic").expect("could not find contract");
     let bytecode = compiled.runtime_bytecode.to_vec();
     let hex_code = hex::encode(bytecode);
-    std::fs::write(Path::new("./caller.hex"), hex_code)?;
+    println!("Basic code: {}", hex_code);
+    std::fs::write(Path::new("./basic.hex"), hex_code)?;
+
 
     let bytecode = compiled.bytecode.to_vec();
     let hex_code = hex::encode(bytecode);
-    std::fs::write(Path::new("./caller_cons.hex"), hex_code)?;
+    std::fs::write(Path::new("./basic_cons.hex"), hex_code)?;
+    // let compiled_clr = Solc::new("./CallerTest.sol").build()?;
+    // let compiled = compiled_clr.get("Caller").expect("could not find contract");
+    // let bytecode = compiled.runtime_bytecode.to_vec();
+    // let hex_code = hex::encode(bytecode);
+    // std::fs::write(Path::new("./caller.hex"), hex_code)?;
+    //
+    // let bytecode = compiled.bytecode.to_vec();
+    // let hex_code = hex::encode(bytecode);
+    // std::fs::write(Path::new("./caller_cons.hex"), hex_code)?;
     Ok(())
 }
 

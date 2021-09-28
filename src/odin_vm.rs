@@ -23,11 +23,146 @@ pub async fn run_odin() -> eyre::Result<()> {
   }
 }
 
+pub async fn run_odin_deploy() -> eyre::Result<()> {
+  if std::env::var("TRACE").is_ok() {
+    run_deploy_with_setup(StdoutTracer::default())
+  } else {
+    run_deploy_with_setup(NoopTracer)
+  }
+}
+
+
 pub async fn test_odin_host() -> eyre::Result<()> {
   let host = MockedHost::default();
   Ok(())
 }
 
+fn run_deploy_with_setup<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
+
+  let basic = Solc::new("./Basic.sol").build()?;
+
+  let basic = basic.get("BasicCreate").expect("Could not find contract");
+  let basic_bytecode = basic.bytecode.clone().to_vec();
+  let basic_runtime = basic.runtime_bytecode.clone().to_vec();
+  let deployer_address = "0x0fDf39DeeB7f79C9B4CD72d4e5b5DBCf072Dd929".parse().unwrap();
+
+  let mut host = MockedHost::default();
+  let deployer_account = Account {
+    nonce: 0,
+    code: basic_runtime.clone().into(),
+    code_hash: H256::default(),
+    balance: U256::from(10000000),
+    storage: Default::default()
+  };
+  host.accounts.insert(deployer_address, deployer_account);
+
+  let gas = 10_000_000_000;
+
+  let sig = id("setUp()").to_vec();
+  let msg = Message {
+    kind: CallKind::Call,
+    is_static: false,
+    depth: 1,
+    gas,
+    destination: deployer_address,
+    sender: Address::zero(),
+    input_data: sig.into(),
+    value: U256::zero(),
+  };
+
+
+  let ctr_contract = AnalyzedCode::analyze(basic_runtime);
+  let accounts_before = &host.clone().accounts;
+
+  let output = ctr_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
+  // let str =  &host.accounts.entry(callee_address).or_default().storage;
+  let accounts = &host.accounts;
+  println!("Addresses before:\n {:?}\n Addresses after:\n {:?}", accounts_before, accounts);
+  //println!("Callee (address: {}) has storage: {:?}",callee_address, str);
+  assert_eq!(output.status_code, StatusCode::Success);
+
+
+  let basic_contract_addr: Address = "0xba82117bb64c0cedda9442c6e49783a9ccfbb8f6".parse().unwrap();
+  let mut data = id("setVal(uint256)").to_vec();
+  let mut val_to_set = U256::from(12_u64);
+  let mut val_as_bytes = [0u8; 32];
+  val_to_set.to_big_endian(&mut val_as_bytes);
+  data.extend_from_slice(&val_as_bytes);
+
+  let basic_contract_bytecode = host.accounts.get(&basic_contract_addr).unwrap().code.clone();
+
+  let basic_contract = AnalyzedCode::analyze(basic_contract_bytecode.to_vec());
+  let msg = Message {
+    kind: CallKind::Call,
+    is_static: false,
+    depth: 1,
+    gas,
+    destination: basic_contract_addr,
+    sender: Address::zero(),
+    input_data: data.into(),
+    value: U256::zero(),
+  };
+
+  let output = basic_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
+
+  let basic_contract_storage = host.accounts.get(&basic_contract_addr).unwrap();
+  // Should have two storage values.
+  // 0x01 => 0x01, 0x00 => 0x0c
+  println!("Basic contract storage after execution: {:?}", basic_contract_storage);
+  assert_eq!(output.status_code, StatusCode::Success);
+
+
+
+  Ok(())
+}
+fn run_deploy<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
+
+  let basic = Solc::new("./Basic.sol").build()?;
+
+  let basic = basic.get("BasicCreate").expect("Could not find contract");
+  let basic_bytecode = basic.bytecode.clone().to_vec();
+  let basic_runtime = basic.runtime_bytecode.clone().to_vec();
+  let deployer_address = "0x0fDf39DeeB7f79C9B4CD72d4e5b5DBCf072Dd929".parse().unwrap();
+
+  let mut host = MockedHost::default();
+  let deployer_account = Account {
+    nonce: 0,
+    code: Default::default(),
+    code_hash: Default::default(),
+    balance: U256::from(10000000),
+    storage: HashMap::new()
+  };
+  host.accounts.insert(deployer_address, deployer_account);
+
+  let gas = 10_000_000_000;
+
+  let msg = Message {
+    kind: CallKind::Call,
+    is_static: false,
+    depth: 1,
+    gas,
+    destination: H160::zero(),
+    sender: deployer_address,
+    input_data: basic_bytecode.clone().into(),
+    value: U256::from(10_000_000),
+  };
+
+
+  let ctr_contract = AnalyzedCode::analyze(basic_bytecode);
+  let accounts_before = host.accounts.keys().collect::<Vec<&Address>>();
+
+  let output = ctr_contract.execute(&mut host.clone(), &mut tracer, None, msg.clone(), Revision::latest());
+ // let str =  &host.accounts.entry(callee_address).or_default().storage;
+  let accounts = host.accounts.keys().clone().collect::<Vec<&Address>>();
+  println!("Addresses before:\n {:?}\n Addresses after:\n {:?}", accounts_before, accounts);
+  //println!("Callee (address: {}) has storage: {:?}",callee_address, str);
+  assert_eq!(output.status_code, StatusCode::Success);
+
+
+
+  Ok(())
+
+}
 fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
   let compiled_callee = Solc::new("./CalleeTest.sol").build()?;
   let compiled_caller = Solc::new("./CallerTest.sol").build()?;
@@ -139,11 +274,9 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
   };
 
   let output = caller_contract.execute(&mut host, &mut tracer, None, msg.clone(), Revision::latest());
-  let str =  &host.accounts.entry(callee_address).or_default().storage;
-  //println!("Callee's (address: {}) storage is: {:?}",callee_address, str);
-  //println!("Recorded Calls: {:?}", host.recorded);
+
   assert_eq!(output.status_code, StatusCode::Success);
-  //
+
 
 
   let msg = Message {
@@ -201,3 +334,6 @@ fn run<T: Tracer>(mut tracer: T) -> eyre::Result<()> {
 fn test_run() {
   run(NoopTracer);
 }
+
+#[test]
+fn test_run_deploy() {run_deploy(NoopTracer);}
